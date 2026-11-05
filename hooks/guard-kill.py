@@ -18,39 +18,75 @@ HINT = ("Find the exact PID first (`pgrep -fl <pattern>`, check the list), then 
         "Or use an exact name with options before it: `pkill -x <name>` / `killall <name>`.")
 
 KILLERS = {"pkill", "killall", "kill"}
-SHELLS = {"sh", "bash", "zsh", "dash"}
+SHELLS = {"sh", "bash", "zsh", "dash", "ash", "ksh", "mksh", "csh", "tcsh", "fish"}
 # These run the command after them, and may have options of their own.
-WRAPPERS = {"sudo", "env", "nohup", "exec", "command", "time", "timeout", "nice", "xargs"}
+WRAPPERS = {"sudo", "doas", "env", "nohup", "exec", "command", "builtin", "time", "timeout", "gtimeout",
+            "nice", "ionice", "stdbuf", "setsid", "caffeinate", "coproc", "xargs", "find"}
 SHELL_WORDS = {"if", "then", "elif", "else", "while", "until", "do", "{", "!"}
+SEPARATORS = r"&&|\|\||[;\n&()]|`"
 
 
 def name(word):
     return word.rsplit("/", 1)[-1]
 
 
+def parse(text):
+    text = text.rstrip().removesuffix("\\")  # What is left of `\;` after the split on `;`.
+    try:
+        return shlex.split(text)
+    except ValueError:
+        return text.split()
+
+
+def commands(words):
+    """The simple commands inside one parsed segment, looking through wrappers and shells."""
+    while words and (words[0] in SHELL_WORDS or "=" in words[0] or re.match(r"\d*[<>]", words[0])):
+        words = words[1:]
+    if words[:1] == ["function"]:
+        words = words[2:]
+        yield from commands(words)
+    elif not words:
+        return
+    elif name(words[0]) == "eval":
+        yield from segments(" ".join(words[1:]))
+    elif name(words[0]) in WRAPPERS:
+        # Try every later word, because the first match can be an option value (`timeout -s kill 5 ...`).
+        for i, word in enumerate(words):
+            if i and name(word) in KILLERS | SHELLS | {"eval"}:
+                yield from commands(words[i:])
+            elif word in ("-S", "--split-string") and "env" in map(name, words[:i]):
+                yield from segments(" ".join(words[i + 1:]))
+    elif name(words[0]) in SHELLS:
+        for i, word in enumerate(words):
+            if word.startswith("<<<"):
+                yield from segments(word[3:] or " ".join(words[i + 1:i + 2]))
+        flag = next((i for i, w in enumerate(words) if re.fullmatch(r"[-+][a-zA-Z]*c[a-zA-Z]*", w)), None)
+        if flag is not None:
+            script = next((w for w in words[flag + 1:] if not w.startswith(("-", "+"))), None)
+            if script:
+                yield from segments(script)
+    else:
+        yield words
+
+
+def piped_text(left, right):
+    """Commands in the text of `echo '...' | bash`."""
+    sink = parse(re.split(SEPARATORS, right)[0])
+    source = parse(re.split(SEPARATORS, left)[-1])
+    if source and name(source[0]) in ("echo", "printf") and SHELLS & set(map(name, sink)):
+        yield from segments(" ".join(w for w in source[1:] if not w.startswith("-")))
+
+
 def segments(cmd):
     # Split compound commands into simple ones; good enough for the shapes agents write.
     # The split ignores quotes, so quoted text with a separator can be read as a command.
     # That errs toward blocking.
-    for part in re.split(r"&&|\|\||[;|\n&()]|`", cmd):
-        try:
-            words = shlex.split(part)
-        except ValueError:
-            words = part.split()
-        while words:
-            if words[0] in SHELL_WORDS or "=" in words[0]:
-                words = words[1:]
-            elif name(words[0]) in WRAPPERS:
-                inner = [i for i, w in enumerate(words) if i and name(w) in KILLERS | SHELLS]
-                words = words[inner[0]:] if inner else []
-            else:
-                break
-        if words and name(words[0]) in SHELLS:
-            flag = next((i for i, w in enumerate(words) if re.fullmatch(r"-[a-z]*c", w)), None)
-            if flag is not None and flag + 1 < len(words):
-                yield from segments(words[flag + 1])
-        elif words:
-            yield words
+    cmd = re.sub(r"\d*[<>]&\d+", " ", cmd.replace("\\\n", ""))
+    stages = re.split(r"(?<!\|)\|(?!\|)", cmd)
+    for left, right in zip(stages, stages[1:]):
+        yield from piped_text(left, right)
+    for part in re.split(SEPARATORS + r"|\|", cmd):
+        yield from commands(parse(part))
 
 
 def short_flags(arg, with_value):

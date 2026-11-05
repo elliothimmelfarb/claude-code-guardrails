@@ -29,6 +29,39 @@ BLOCK = [
     "bash -c 'pkill -f python'",
     "sudo bash -lc 'pkill -f python'",
     'echo "$(pkill -f python)"',
+    # A line continuation joins the words back together.
+    "pkill \\\n  -f node",
+    # Shell flags can cluster around c, and -- ends them.
+    "bash -ce 'pkill -f node'",
+    "bash -c -- 'pkill -f node'",
+    "bash -euc 'pkill -f node'",
+    "sh -xec 'pkill -f node'",
+    "ksh -c 'pkill -f node'",
+    "csh -c 'pkill -f node'",
+    "tcsh -c 'pkill -f node'",
+    # "kill" here is an option value, and the real command comes later.
+    "timeout -s kill 5 pkill -f node",
+    "timeout --signal kill 5 pkill -f node",
+    "sudo -u kill pkill -f node",
+    "gtimeout 5 pkill -f node",
+    "caffeinate pkill -f node",
+    # Text handed to a shell another way.
+    "echo 'pkill -f node' | bash",
+    "echo 'pkill -f node' | sudo sh",
+    "printf 'pkill -f node' | sh",
+    "bash <<< 'pkill -f node'",
+    "bash <<<'pkill -f node'",
+    "eval 'pkill -f node'",
+    "eval pkill -f node",
+    "sudo eval pkill -f node",
+    "env -S 'pkill -f node'",
+    "builtin kill -9 -1",
+    "find . -maxdepth 0 -exec pkill -f node \\;",
+    "find . -exec bash -c 'pkill -f node' \\;",
+    "2>&1 pkill -f node",
+    ">/dev/null pkill -f node",
+    "coproc pkill -f node",
+    "function f { pkill -f node; }; f",
 ]
 ALLOW = [
     "pkill -x vite",
@@ -41,9 +74,17 @@ ALLOW = [
     "pgrep -f node",
     "git commit -m 'stop using pkill -f'",
     "echo pkill -f node",
+    "echo 'pkill -f node' | tee note.txt",
     "sudo ls -la",
     "bash -c 'ls -la'",
     "ls -la",
+    "timeout -s kill 5 ls",
+    "find . -name kill",
+    "env -S 'ls -la'",
+    "echo hi | bash",
+    "bash script.sh",
+    "eval ls -la",
+    "2>&1 ls",
 ]
 
 
