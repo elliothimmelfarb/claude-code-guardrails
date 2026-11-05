@@ -62,9 +62,42 @@ BLOCK = [
     ">/dev/null pkill -f node",
     "coproc pkill -f node",
     "function f { pkill -f node; }; f",
+    "pkill --fu node",  # Linux accepts an abbreviated long option
+    "pkill -cf node",  # -c takes no value on Linux, so the f still counts
+    # An inverted match kills everything else.
+    "pkill -v -x node",
+    "pkill -vx node",
+    "pkill --inverse -x node",
+    # Selecting by user with no exact name reaches every process that user runs.
+    "pkill -U 501",
+    "pkill -U 501 node",
+    "pkill -u someuser node",
+    "pkill --euid 501",
+    "killall -u someuser",
+    # A pattern this short matches inside almost anything.
+    "pkill a",
+    "pkill .",
+    "pkill '.*'",
+    "pkill -x '.*'",
+    # pgrep output is only a list once somebody has read it.
+    "kill -9 $(pgrep -f cat)",
+    "kill $(pgrep node)",
+    "kill `pgrep node`",
+    "pgrep -f cat | xargs kill -9",
+    "pgrep node | sudo xargs -r kill",
+    # A pid is a number, however it is written.
+    "kill -9 -01",
+    "kill -9 -0001",
+    "kill -KILL -1",
+    "kill -s KILL -1",
 ]
 ALLOW = [
     "pkill -x vite",
+    "pkill -x ls",  # exact, so a short name is safe
+    "pkill vite",
+    "kill -1 12345",  # SIGHUP to one process
+    "kill -1",
+    "killall -v Spotify",
     "pkill -U 501 -x cat",
     "pkill -Ufred -x cat",  # the f belongs to the user name
     "killall Spotify",
@@ -113,8 +146,17 @@ class GuardKill(unittest.TestCase):
 
     def test_allow_list_turns_off_only_the_named_rule(self):
         env = {"GUARD_KILL_ALLOW": "pkill-late-option"}
-        self.assertEqual(run("pkill node -u someuser", env).returncode, 0)
+        self.assertEqual(run("pkill node -n", env).returncode, 0)
         self.assertEqual(run("pkill -f node", env).returncode, 2)
+
+    def test_broken_input_blocks_instead_of_passing(self):
+        for raw in ("not json", "[]", '{"tool_name":"Bash","tool_input":"x"}',
+                    '{"tool_name":"Bash","tool_input":{"command":null}}',
+                    '{"tool_name":"Bash","tool_input":{"command":123}}'):
+            with self.subTest(raw):
+                r = subprocess.run([sys.executable, "-I", GUARD], input=raw, capture_output=True, text=True)
+                self.assertEqual(r.returncode, 2)
+                self.assertIn("guard-kill", r.stderr)
 
     def test_message_names_the_rule_and_the_way_out(self):
         err = run("pkill -f node").stderr
