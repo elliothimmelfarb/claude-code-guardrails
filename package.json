@@ -1,0 +1,11 @@
+{
+  "name": "claude-code-guardrails",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test": "python3 -m unittest discover -s tests && node --test tests/*.test.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
