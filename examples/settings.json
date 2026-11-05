@@ -8,7 +8,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           { "type": "command", "command": "python3 -I ~/.claude/hooks/check-writing.py", "timeout": 10 }
         ]
@@ -16,7 +16,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           { "type": "command", "command": "CHECK_REPORT_MATCH='/reports/.*\\.html$' node ~/.claude/hooks/check-report.cjs", "timeout": 60 }
         ]

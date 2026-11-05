@@ -35,7 +35,12 @@ def load_config():
     if not path:
         return DEFAULTS
     with open(path, encoding="utf-8") as f:
-        config = {**DEFAULTS, **json.load(f)}
+        rules = json.load(f)
+    if not isinstance(rules, dict):
+        raise ValueError("the rules file must hold a JSON object")
+    config = {**DEFAULTS, **rules}
+    if not isinstance(config["em_dash"], bool):
+        raise ValueError("`em_dash` must be true or false")
     for key in ("banned", "include"):
         items = config[key]
         if not isinstance(items, list) or not all(isinstance(i, str) and i.strip() for i in items):
@@ -55,7 +60,9 @@ def find_problems(text, config):
 
 
 def included(path, patterns):
-    return any(fnmatch.fnmatch(path, p) or fnmatch.fnmatch(os.path.basename(path), p)
+    # Lowered by hand, because fnmatch only ignores case on Windows and macOS files do too.
+    path = path.lower()
+    return any(fnmatch.fnmatchcase(path, p.lower()) or fnmatch.fnmatchcase(os.path.basename(path), p.lower())
                for p in patterns)
 
 
@@ -65,10 +72,21 @@ def report(label, problems):
     return 2
 
 
+def check_tool_call(config):
+    tool_input = json.load(sys.stdin).get("tool_input", {})
+    path = tool_input.get("file_path", "")
+    if not path or not included(path, config["include"]):
+        return 0
+    parts = [tool_input.get(k) or "" for k in ("content", "new_string")]
+    parts += [edit.get("new_string") or "" for edit in tool_input.get("edits") or []]
+    problems = find_problems("\n".join(parts), config)
+    return report(path, problems) if problems else 0
+
+
 def main():
     try:
         config = load_config()
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, TypeError, RecursionError) as e:
         print(f"check-writing could not read its rules at {config_path()}: {e}", file=sys.stderr)
         return 2
 
@@ -81,13 +99,11 @@ def main():
                 status = report(path, problems)
         return status
 
-    tool_input = json.load(sys.stdin).get("tool_input", {})
-    path = tool_input.get("file_path", "")
-    if not path or not included(path, config["include"]):
-        return 0
-    text = "\n".join(tool_input.get(k) or "" for k in ("content", "new_string"))
-    problems = find_problems(text, config)
-    return report(path, problems) if problems else 0
+    try:
+        return check_tool_call(config)
+    except (ValueError, AttributeError, TypeError) as e:
+        print(f"check-writing could not read this tool call: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

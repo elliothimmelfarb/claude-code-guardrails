@@ -57,6 +57,34 @@ class CheckWriting(unittest.TestCase):
                 self.assertEqual(r.returncode, 2)
                 self.assertIn("rules", r.stderr)
 
+    def test_rules_that_are_not_an_object_block(self):
+        for rules in ("[]", "null", "3", '"text"', '{"em_dash": "no"}'):
+            with self.subTest(rules):
+                r = run({"file_path": "a.md", "content": "fine"}, rules)
+                self.assertEqual(r.returncode, 2)
+                self.assertIn("rules", r.stderr)
+                self.assertNotIn("Traceback", r.stderr)
+
+    def test_every_edit_in_a_multi_edit_is_checked(self):
+        edits = [{"old_string": "a", "new_string": "fine"}, {"old_string": "b", "new_string": f"x {EM_DASH} y"}]
+        self.assertEqual(run({"file_path": "a.md", "edits": edits}).returncode, 2)
+
+    def test_file_matching_ignores_case(self):
+        self.assertEqual(run({"file_path": "README.MD", "content": EM_DASH}).returncode, 2)
+        rules = {"include": ["*/Docs/*.TXT"]}
+        self.assertEqual(run({"file_path": "/x/docs/a.txt", "content": EM_DASH}, rules).returncode, 2)
+
+    def test_a_broken_tool_call_blocks(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "rules.json")
+            with open(path, "w") as f:
+                json.dump(RULES, f)
+            env = {**os.environ, "GUARDRAILS_WRITING_CONFIG": path}
+            for raw in ("not json", "[]", '{"tool_input": 3}'):
+                with self.subTest(raw):
+                    r = subprocess.run([sys.executable, "-I", HOOK], input=raw, env=env, text=True, capture_output=True)
+                    self.assertEqual(r.returncode, 2)
+
     def test_checks_named_files_from_the_command_line(self):
         with tempfile.TemporaryDirectory() as d:
             bad = os.path.join(d, "bad.txt")
