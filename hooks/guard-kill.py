@@ -31,7 +31,7 @@ SEPARATORS = r"&&|\|\||[;\n&()]|`"
 
 
 PGREP_INTO_KILL = re.compile(
-    r"\bp?kill\b[^;&|\n]*(?:\$\(|`)\s*(?:\S*/)?pgrep\b"  # kill $(pgrep ...)
+    r"\bp?kill\b(?!\s+-0\b)[^;&|\n]*(?:\$\(|`)\s*(?:\S*/)?pgrep\b"  # kill $(pgrep ...), but not signal 0
     r"|\bpgrep\b[^;&\n]*\|[^|;&\n]*\bxargs\b[^|;&\n]*\bp?kill\b"  # pgrep ... | xargs kill
 )
 

@@ -118,6 +118,7 @@ ALLOW = [
     "bash script.sh",
     "eval ls -la",
     "2>&1 ls",
+    "while kill -0 $(pgrep -f vitest | head -1); do sleep 1; done",  # signal 0 only checks it exists
 ]
 
 
